@@ -1,0 +1,55 @@
+body {
+    background-color: #1e3a8a;
+    color: #e2e8f0;
+    font-family: 'Sarabun', sans-serif;
+}
+
+.air-quality-card {
+    border-radius: 0.75rem;
+    padding: 18px;
+    text-align: center;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    margin-bottom: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.air-quality-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.main-card {
+    background-color: #e2e8f0;
+    color: #1a365d;
+    border: 2px solid white;
+    background-image: linear-gradient(to right, #e2e8f0, #cbd5e0);
+}
+
+.sub-card {
+    background-color: #e2e8f0;
+    color: #1a365d;
+    border: 2px solid white;
+    background-image: linear-gradient(to right, #e2e8f0, #cbd5e0);
+}
+
+.weather-info-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.recommendation {
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 0.8rem;
+    border-radius: 8px;
+    margin-top: 0.5rem;
+}
+
+.compare-section {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1rem;
+}
