@@ -329,14 +329,14 @@ def update_dashboard_and_prediction(selected_station, arima_clicks, regression_c
         # Get the latest data for station info
         latest_data = station_data_full.iloc[-1]
 
-        # Assign each feature to a card
-        card_1_content = f"Temperature: {latest_data.get('temperature', 'N/A')}°C"
-        card_2_content = f"Humidity: {latest_data.get('humidity', 'N/A')}%"
-        card_3_content = f"PM2.5 SP: {latest_data.get('pm_2_5_sp', 'N/A')} μg/m³"
-        card_4_content = f"PM2.5: {latest_data.get('pm_2_5', 'N/A')} μg/m³"
+        # Assign each feature to a card - round to 2 decimal places
+        card_1_content = f"Temperature: {round(float(latest_data.get('temperature', 0)), 2):.2f}°C"
+        card_2_content = f"Humidity: {round(float(latest_data.get('humidity', 0)), 2):.2f}%"
+        card_3_content = f"PM2.5 SP: {round(float(latest_data.get('pm_2_5_sp', 0)), 2):.2f} μg/m³"
+        card_4_content = f"PM2.5: {round(float(latest_data.get('pm_2_5', 0)), 2):.2f} μg/m³"
 
-        # Return the current PM2.5 value for the dedicated display
-        current_pm25 = f"{latest_data.get('pm_2_5', 'N/A')}"
+        # Return the current PM2.5 value for the dedicated display - round to 2 decimal places
+        current_pm25 = f"{round(float(latest_data.get('pm_2_5', 0)), 2):.2f}"
 
         # Determine which button was clicked for prediction
         button_id = ctx.triggered[0]['prop_id'].split('.')[0]
@@ -365,19 +365,22 @@ def update_dashboard_and_prediction(selected_station, arima_clicks, regression_c
             model_type = "hybrid"
             predicted_values, future_dates = make_hybrid_predictions(selected_station, 7)
         else:
-            # If no prediction button clicked, use historical data for forecast display
-            for i in range(1, 7):  # Next 6 days (total 7 including today)
-                if i < len(station_data_full):
-                    day_data = station_data_full.iloc[-i-1]
-                    forecast_row = html.Div(
-                        [
-                            html.Div(days[i], className="font-weight-bold"),
-                            html.Div(f"{round(float(day_data.get('pm_2_5', 0)), 2):.2f} μg/m³"),
-                        ],
-                        className="d-flex justify-content-between align-items-center mb-2",
-                    )
-                    forecast_rows.append(forecast_row)
-            return fig, forecast_rows, current_pm25, card_1_content, card_2_content, card_3_content, card_4_content, {}
+            # If no prediction button clicked, show "No selected model" message
+            forecast_display = html.Div(
+                html.Div("No selected model", 
+                         className="text-center py-5 font-weight-bold",
+                         style={"fontSize": "24px", "color": "white"}),
+                style={
+                    "backgroundColor": "#1e2a4a",
+                    "borderRadius": "15px",
+                    "padding": "15px",
+                    "height": "100%",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center"
+                }
+            )
+            return fig, forecast_display, current_pm25, card_1_content, card_2_content, card_3_content, card_4_content, {}
 
         # Create the prediction plot
         prediction_fig = px.line(
@@ -400,25 +403,64 @@ def update_dashboard_and_prediction(selected_station, arima_clicks, regression_c
         )
         
         # Update forecast display with prediction results
-        # Clear previous forecast rows (except current day)
-        forecast_rows = [forecast_rows[0]]
+        # Create a new forecast display with a weather-app style layout
+        forecast_rows = []
         
-        # Add prediction for next days
+        # Add current day with the current PM2.5 value
+        current_day = html.Div([
+            html.Div("Today", className="font-weight-bold", style={"fontSize": "18px"}),
+            html.Div(style={"display": "flex", "alignItems": "center", "justifyContent": "space-between", "width": "100%"}, children=[
+                html.Div(style={"width": "30px"}),  # Space for weather icon (empty for now)
+                html.Div(f"{round(float(latest_data.get('pm_2_5', 0)), 2):.2f}", style={"color": "#8e9aaf", "fontSize": "20px", "marginRight": "10px"}),
+                html.Div(
+                    html.Div(className="progress", style={"height": "8px", "width": "100px", "backgroundColor": "#2a3a5a"}, children=[
+                        html.Div(className="progress-bar", style={"width": f"{min(100, int(float(latest_data.get('pm_2_5', 0))/50*100))}%", "backgroundColor": "#ff7e33"})
+                    ])
+                ),
+                html.Div("μg/m³", style={"color": "#8e9aaf", "fontSize": "20px", "marginLeft": "10px"}),
+            ])
+        ], className="py-3 border-bottom", style={"borderColor": "#2a3a5a"})
+        forecast_rows.append(current_day)
+        
+        # Add prediction for next days with a consistent layout
+        day_labels = ["Tomorrow", "Day 2", "Day 3", "Day 4", "Day 5", "Day 6", "Day 7"]
+        
         for i in range(len(predicted_values)):
-            if i < 7:  # Show all 7 days (changed from 6 to 7)
-                forecast_row = html.Div(
-                    [
-                        html.Div(days[i+1] if i+1 < len(days) else "อีก 7 วัน", className="font-weight-bold"),
-                        html.Div(f"{round(float(predicted_values[i]), 2):.2f} μg/m³"),
-                    ],
-                    className="d-flex justify-content-between align-items-center mb-2 px-3",  # Added px-3 for padding
-                )
+            if i < 7:  # Show all 7 days
+                forecast_row = html.Div([
+                    html.Div(day_labels[i] if i < len(day_labels) else f"Day {i+2}", 
+                             className="font-weight-bold", style={"fontSize": "18px"}),
+                    html.Div(style={"display": "flex", "alignItems": "center", "justifyContent": "space-between", "width": "100%"}, children=[
+                        html.Div(style={"width": "30px"}),  # Space for weather icon (empty for now)
+                        html.Div(f"{round(float(predicted_values[i]), 2):.2f}", style={"color": "#8e9aaf", "fontSize": "20px", "marginRight": "10px"}),
+                        html.Div(
+                            html.Div(className="progress", style={"height": "8px", "width": "100px", "backgroundColor": "#2a3a5a"}, children=[
+                                html.Div(className="progress-bar", style={"width": f"{min(100, int(float(predicted_values[i])/50*100))}%", "backgroundColor": "#ff7e33"})
+                            ])
+                        ),
+                        html.Div("μg/m³", style={"color": "#8e9aaf", "fontSize": "20px", "marginLeft": "10px"}),
+                    ])
+                ], className="py-3 border-bottom", style={"borderColor": "#2a3a5a"})
                 forecast_rows.append(forecast_row)
         
-        # Wrap all forecast rows in a centered container
+        # Wrap all forecast rows in a styled container
         forecast_display = html.Div(
-            forecast_rows,
-            className="d-flex flex-column align-items-center justify-content-center w-100"
+            [
+                html.Div("PM2.5 10-Day Forecast", 
+                         className="text-center mb-3 font-weight-bold",
+                         style={"fontSize": "18px", "color": "#8e9aaf"}),
+                html.Div(
+                    forecast_rows,
+                    className="px-3"
+                )
+            ],
+            style={
+                "backgroundColor": "#1e2a4a",
+                "borderRadius": "15px",
+                "padding": "15px",
+                "color": "white",
+                "boxShadow": "0 4px 8px rgba(0, 0, 0, 0.2)"
+            }
         )
         
         return fig, forecast_display, current_pm25, card_1_content, card_2_content, card_3_content, card_4_content, prediction_fig
