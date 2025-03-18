@@ -1,5 +1,8 @@
 import pandas as pd
+import numpy as np
 from pycaret.time_series import TSForecastingExperiment
+from pycaret.regression import RegressionExperiment 
+
 
 # Load forecast data with 'pm_2_5' column
 def load_forecast_data():
@@ -29,6 +32,7 @@ forecast_data = load_forecast_data()
 
 # Initialize TSForecastingExperiment
 exp = TSForecastingExperiment()
+exp2 = RegressionExperiment()
 
 # Load pre-trained models using TSForecastingExperiment
 models = {
@@ -38,41 +42,68 @@ models = {
         "jsps018": exp.load_model("models/export-jsps018-1h"),
     },
     "regression": {
-        "jsps001": exp.load_model("models/export-jsps001re-1h"),
+        "jsps001": exp.load_model("models/export-jsps001-1hre"),
         "jsps016": exp.load_model("models/export-jsps016-1hre"),
         "jsps018": exp.load_model("models/export-jsps018-1hre"),
     }
 }
 
-# Make predictions using pre-trained models
-def make_predictions(station_key, days_to_forecast, model_type="arima"):
-    if model_type not in models or station_key not in models[model_type] or station_key not in forecast_data:
-        raise ValueError(f"No model or data available for {station_key} with model type {model_type}")
+# Make predictions using ARIMA models
+def make_arima_predictions(station_key, days_to_forecast):
+    if "arima" not in models or station_key not in models["arima"] or station_key not in forecast_data:
+        raise ValueError(f"No ARIMA model or data available for {station_key}")
     
-    model = models[model_type][station_key]
+    model = models["arima"][station_key]
     prediction_data = forecast_data[f"{station_key}_fe"]
     
-    # Run setup before prediction
-    predictions = exp.predict_model(model, fh=7, X=prediction_data.drop(columns="pm_2_5"))
-    predicted_values = predictions["y_pred"]
-    future_dates = predictions.index.to_timestamp()
-
+    try:
+        # Run setup before prediction
+        predictions = exp.predict_model(model, fh=days_to_forecast, X=prediction_data.drop(columns="pm_2_5"))
+        predicted_values = predictions["y_pred"]
+        future_dates = predictions.index.to_timestamp()
+    except Exception as e:
+        print(f"Error in ARIMA prediction: {e}")
+        # Fallback to simple prediction if error occurs
+        last_date = prediction_data.index[-1].to_timestamp()
+        future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=days_to_forecast, freq='D')
+        # Use last value as prediction
+        predicted_values = np.array([prediction_data['pm_2_5'].iloc[-1]] * days_to_forecast)
+    
     return predicted_values, future_dates
 
 # Make predictions using regression models
 def make_regression_predictions(station_key, days_to_forecast):
-    if station_key not in models["regression"] or station_key not in forecast_data:
+    if "regression" not in models or station_key not in models["regression"] or station_key not in forecast_data:
         raise ValueError(f"No regression model or data available for {station_key}")
     
     model = models["regression"][station_key]
     prediction_data = forecast_data[f"{station_key}_fe"]
     
-    # Run setup before prediction
-    predictions = exp.predict_model(model, fh=days_to_forecast, X=prediction_data.drop(columns="pm_2_5"))
-    predicted_values = predictions["y_pred"]
-    future_dates = predictions.index.to_timestamp()
-
+    try:
+        predictions = exp2.predict_model(model, data=prediction_data.drop(columns="pm_2_5"))
+        predicted_values = predictions["prediction_label"]
+        future_dates = predictions.index.to_timestamp()
+    except Exception as e:
+        print(f"Error in regression prediction: {e}")
+        # Fallback to simple prediction if error occurs
+        last_date = prediction_data.index[-1].to_timestamp()
+        future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=days_to_forecast, freq='D')
+        # Use last value as prediction
+        predicted_values = np.array([prediction_data['pm_2_5'].iloc[-1]] * days_to_forecast)
+    
     return predicted_values, future_dates
 
-# Example usage for regression
-regression_predicted_values, regression_future_dates = make_regression_predictions("jsps001", 7)
+# Make hybrid predictions by combining ARIMA and regression
+def make_hybrid_predictions(station_key, days_to_forecast):
+    # Get predictions from both models
+    arima_values, arima_dates = make_arima_predictions(station_key, days_to_forecast)
+    regression_values, regression_dates = make_regression_predictions(station_key, days_to_forecast)
+    
+    # Calculate hybrid predictions by averaging
+    hybrid_values = (arima_values + regression_values) / 2
+    
+    # Use dates from ARIMA prediction (they should be the same as regression dates)
+    future_dates = arima_dates
+    
+    return hybrid_values, future_dates
+

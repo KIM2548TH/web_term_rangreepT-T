@@ -2,11 +2,10 @@ from dash import Dash, html, dcc, callback, Output, Input, State, callback_conte
 import plotly.express as px
 import pandas as pd
 import numpy as np
-from pycaret.time_series import load_model, predict_model
 import dash_bootstrap_components as dbc
 import dash_leaflet as dl
 from math import sqrt
-from forecast_utils import make_predictions  # Import the function
+from forecast_utils import make_arima_predictions, make_regression_predictions, make_hybrid_predictions  # Update import statement
 
 
 # โโละข้อมูลจากไฟล์ CSV
@@ -37,7 +36,7 @@ def load_data():
     return data
 
 
-# โหลดข้อมูล
+# ข้อมูล
 historical_data = load_data()
 
 # ตรวจสอบว่าข้อมูลถูกโหลดมาจริงหรือไม่
@@ -46,17 +45,17 @@ if not historical_data:
 else:
     print("Data loaded successfully!")
 
-# โหลดโมเดล
-models = {
-    "1D": {
-        "jsps001": load_model("models/export-jsps001-1h"),
-        "jsps016": load_model("models/export-jsps016-1h"),
-        "jsps018": load_model("models/export-jsps018-1h"),
-        "jsps001re": load_model("models/export-jsps001re-1h"),
-        "jsps016re": load_model("models/export-jsps016-1hre"),
-        "jsps018re": load_model("models/export-jsps018-1hre"),
-    },
-}
+# โหลดโมเดล - ไม่จำเป็นต้องโหลดที่นี่เพราะ forecast_utils.py จัดการให้แล้ว
+# models = {
+#     "1D": {
+#         "jsps001": load_model("models/export-jsps001-1h"),
+#         "jsps016": load_model("models/export-jsps016-1h"),
+#         "jsps018": load_model("models/export-jsps018-1h"),
+#         "jsps001re": load_model("models/export-jsps001-1hre"),
+#         "jsps016re": load_model("models/export-jsps016-1hre"),
+#         "jsps018re": load_model("models/export-jsps018-1hre"),
+#     },
+# }
 
 
 # สถานที่และตำแหน่ง
@@ -336,52 +335,48 @@ def update_dashboard_and_prediction(selected_station, arima_clicks, regression_c
         card_3_content = f"PM2.5 SP: {latest_data.get('pm_2_5_sp', 'N/A')} μg/m³"
         card_4_content = f"PM2.5: {latest_data.get('pm_2_5', 'N/A')} μg/m³"
 
-        # Create forecast display using actual data from full file
-        days = ["วันนี้", "พรุ่งนี้", "อีก 2 วัน", "อีก 3 วัน", "อีก 4 วัน", "อีก 5 วัน", "อีก 6 วัน"]
-        forecast_rows = []
-
-        # Add current day
-        current_day = html.Div(
-            [
-                html.Div("วันนี้", className="font-weight-bold"),
-                html.Div(f"{latest_data.get('pm_2_5', 'N/A')} μg/m³"),
-            ],
-            className="d-flex justify-content-between align-items-center mb-2",
-        )
-        forecast_rows.append(current_day)
-
-        # Add forecast for next days using actual data
-        for i in range(1, 7):  # Next 6 days (total 7 including today)
-            if i < len(station_data_full):
-                day_data = station_data_full.iloc[-i-1]
-                forecast_row = html.Div(
-                    [
-                        html.Div(days[i-1], className="font-weight-bold"),
-                        html.Div(f"{day_data.get('pm_2_5', 'N/A')} μg/m³"),
-                    ],
-                    className="d-flex justify-content-between align-items-center mb-2",
-                )
-                forecast_rows.append(forecast_row)
-
         # Return the current PM2.5 value for the dedicated display
         current_pm25 = f"{latest_data.get('pm_2_5', 'N/A')}"
 
         # Determine which button was clicked for prediction
         button_id = ctx.triggered[0]['prop_id'].split('.')[0]
         
+        # Initialize forecast_rows with current day
+        days = ["วันนี้", "พรุ่งนี้", "อีก 2 วัน", "อีก 3 วัน", "อีก 4 วัน", "อีก 5 วัน", "อีก 6 วัน"]
+        forecast_rows = []
+        
+        # Add current day
+        current_day = html.Div(
+            [
+                html.Div("วันนี้", className="font-weight-bold"),
+                html.Div(f"{round(float(latest_data.get('pm_2_5', 0)), 2):.2f} μg/m³"),
+            ],
+            className="d-flex justify-content-between align-items-center mb-2",
+        )
+        forecast_rows.append(current_day)
+
         if button_id == "predict-arima-button":
             model_type = "arima"
-            predicted_values, future_dates = make_predictions(selected_station, 7, model_type=model_type)
+            predicted_values, future_dates = make_arima_predictions(selected_station, 7)
         elif button_id == "predict-regression-button":
             model_type = "regression"
-            predicted_values, future_dates = make_predictions(selected_station, 7, model_type=model_type)
+            predicted_values, future_dates = make_regression_predictions(selected_station, 7)
         elif button_id == "predict-hybrid-button":
-            # Get predictions from both models
-            arima_values, _ = make_predictions(selected_station, 7, model_type="arima")
-            regression_values, future_dates = make_predictions(selected_station, 7, model_type="regression")
-            # Calculate hybrid predictions by averaging
-            predicted_values = (arima_values + regression_values) / 2
+            model_type = "hybrid"
+            predicted_values, future_dates = make_hybrid_predictions(selected_station, 7)
         else:
+            # If no prediction button clicked, use historical data for forecast display
+            for i in range(1, 7):  # Next 6 days (total 7 including today)
+                if i < len(station_data_full):
+                    day_data = station_data_full.iloc[-i-1]
+                    forecast_row = html.Div(
+                        [
+                            html.Div(days[i], className="font-weight-bold"),
+                            html.Div(f"{round(float(day_data.get('pm_2_5', 0)), 2):.2f} μg/m³"),
+                        ],
+                        className="d-flex justify-content-between align-items-center mb-2",
+                    )
+                    forecast_rows.append(forecast_row)
             return fig, forecast_rows, current_pm25, card_1_content, card_2_content, card_3_content, card_4_content, {}
 
         # Create the prediction plot
@@ -404,7 +399,29 @@ def update_dashboard_and_prediction(selected_station, arima_clicks, regression_c
             paper_bgcolor='white'  # Set paper background color to white
         )
         
-        return fig, forecast_rows, current_pm25, card_1_content, card_2_content, card_3_content, card_4_content, prediction_fig
+        # Update forecast display with prediction results
+        # Clear previous forecast rows (except current day)
+        forecast_rows = [forecast_rows[0]]
+        
+        # Add prediction for next days
+        for i in range(len(predicted_values)):
+            if i < 7:  # Show all 7 days (changed from 6 to 7)
+                forecast_row = html.Div(
+                    [
+                        html.Div(days[i+1] if i+1 < len(days) else "อีก 7 วัน", className="font-weight-bold"),
+                        html.Div(f"{round(float(predicted_values[i]), 2):.2f} μg/m³"),
+                    ],
+                    className="d-flex justify-content-between align-items-center mb-2 px-3",  # Added px-3 for padding
+                )
+                forecast_rows.append(forecast_row)
+        
+        # Wrap all forecast rows in a centered container
+        forecast_display = html.Div(
+            forecast_rows,
+            className="d-flex flex-column align-items-center justify-content-center w-100"
+        )
+        
+        return fig, forecast_display, current_pm25, card_1_content, card_2_content, card_3_content, card_4_content, prediction_fig
 
     except Exception as e:
         print(f"Error updating dashboard: {e}")
